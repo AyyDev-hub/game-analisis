@@ -295,7 +295,8 @@ async function loadActivities(
         const response =
             await fetch(
                 API +
-                "/activities"
+                "/activities?session=" +
+                sessionId
             );
 
         if (!response.ok) {
