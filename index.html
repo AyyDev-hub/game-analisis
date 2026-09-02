@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
+
+<title>Game Analytics</title>
+
+<style>
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f3f4f6;
+    color: #222;
+}
+
+.container {
+    max-width: 900px;
+    margin: auto;
+    padding: 20px;
+}
+
+h1 {
+    margin-bottom: 20px;
+}
+
+select {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 20px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+}
+
+.tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 15px;
+}
+
+.tabs button {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.tabs button.active {
+    font-weight: bold;
+}
+
+.card {
+    background: white;
+    padding: 18px;
+    border-radius: 12px;
+    margin-bottom: 15px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.session {
+    cursor: pointer;
+}
+
+.session:hover {
+    transform: translateY(-1px);
+}
+
+.activity {
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.bar {
+    height: 8px;
+    background: #ddd;
+    border-radius: 5px;
+    overflow: hidden;
+    margin-top: 5px;
+}
+
+.bar-inner {
+    height: 100%;
+    background: #555;
+}
+
+.hidden {
+    display: none;
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+<div class="container">
+
+<h1>Game Analytics</h1>
+
+<select id="gameSelect">
+    <option value="all">Semua Game</option>
+</select>
+
+
+<div class="tabs">
+
+<button id="activityTab"
+        class="active"
+        onclick="showTab('activity')">
+    Activity List
+</button>
+
+<button id="statsTab"
+        onclick="showTab('stats')">
+    Statistics
+</button>
+
+</div>
+
+
+<div id="activityPage"></div>
+
+<div id="statsPage"
+     class="hidden"></div>
+
+</div>
+
+
+<script>
+
+const API =
+    "https://game-analytics.akunffbya.workers.dev";
+
+
+const gameSelect =
+    document.getElementById("gameSelect");
+
+
+const activityPage =
+    document.getElementById("activityPage");
+
+
+const statsPage =
+    document.getElementById("statsPage");
+
+
+let sessions = [];
+
+
+async function loadGames() {
+
+    const response =
+        await fetch(API + "/games");
+
+    const data =
+        await response.json();
+
+    for (const game of data.games) {
+
+        const option =
+            document.createElement("option");
+
+        option.value = game;
+        option.textContent = game;
+
+        gameSelect.appendChild(option);
+    }
+}
+
+
+async function loadSessions() {
+
+    const game =
+        gameSelect.value;
+
+    const response =
+        await fetch(
+            API +
+            "/sessions?game=" +
+            encodeURIComponent(game)
+        );
+
+    const data =
+        await response.json();
+
+    sessions = data.sessions;
+
+    activityPage.innerHTML = "";
+
+    for (const session of sessions) {
+
+        const card =
+            document.createElement("div");
+
+        card.className = "card session";
+
+        card.innerHTML = `
+            <strong>${escapeHtml(session.game_name)}</strong>
+            <br>
+            Session:
+            ${escapeHtml(session.session_id)}
+            <br>
+            <small>${escapeHtml(session.created_at)}</small>
+            <div class="activities"
+                 id="activity-${escapeHtml(session.session_id)}">
+            </div>
+        `;
+
+        card.onclick = () =>
+            loadActivities(
+                session.session_id,
+                card
+            );
+
+        activityPage.appendChild(card);
+    }
+}
+
+
+async function loadActivities(
+    sessionId,
+    card
+) {
+
+    const container =
+        card.querySelector(".activities");
+
+    if (container.innerHTML !== "")
+        return;
+
+    const response =
+        await fetch(
+            API +
+            "/activities?session=" +
+            encodeURIComponent(sessionId)
+        );
+
+    const data =
+        await response.json();
+
+    for (const item of data.activities) {
+
+        const div =
+            document.createElement("div");
+
+        div.className = "activity";
+
+        div.textContent =
+            item.activity_order +
+            ". " +
+            item.activity;
+
+        container.appendChild(div);
+    }
+}
+
+
+async function loadStatistics() {
+
+    const game =
+        gameSelect.value;
+
+    statsPage.innerHTML = `
+        <div class="card">
+            <strong>
+                Total Session:
+            </strong>
+            <span id="totalSessions">
+                Loading...
+            </span>
+        </div>
+    `;
+
+    try {
+
+        const response =
+            await fetch(
+                API +
+                "/statistics?game=" +
+                encodeURIComponent(game)
+            );
+
+        const data =
+            await response.json();
+
+        document.getElementById(
+            "totalSessions"
+        ).textContent = data.sessions;
+
+
+        const positions =
+            data.positions;
+
+
+        for (const position of Object.keys(positions)) {
+
+            const activities =
+                positions[position];
+
+
+            const card =
+                document.createElement("div");
+
+            card.className = "card";
+
+
+            const title =
+                document.createElement("h3");
+
+            title.textContent =
+                "Aktivitas ke-" + position;
+
+            card.appendChild(title);
+
+
+            for (const item of activities) {
+
+                const wrapper =
+                    document.createElement("div");
+
+                wrapper.style.marginBottom =
+                    "14px";
+
+
+                const label =
+                    document.createElement("div");
+
+                label.innerHTML = `
+                    <strong>
+                        ${escapeHtml(item.activity)}
+                    </strong>
+
+                    <span style="float:right">
+                        ${item.percentage}%
+                        (${item.total} session)
+                    </span>
+                `;
+
+
+                const bar =
+                    document.createElement("div");
+
+                bar.className = "bar";
+
+
+                const barInner =
+                    document.createElement("div");
+
+                barInner.className =
+                    "bar-inner";
+
+                barInner.style.width =
+                    Math.min(
+                        item.percentage,
+                        100
+                    ) + "%";
+
+
+                bar.appendChild(
+                    barInner
+                );
+
+                wrapper.appendChild(label);
+                wrapper.appendChild(bar);
+
+                card.appendChild(wrapper);
+            }
+
+
+            statsPage.appendChild(card);
+        }
+
+    } catch (error) {
+
+        statsPage.innerHTML = `
+            <div class="card">
+                Gagal mengambil statistics.
+            </div>
+        `;
+
+        console.error(error);
+    }
+}
+
+function showTab(tab) {
+
+    if (tab === "activity") {
+
+        activityPage.classList.remove("hidden");
+        statsPage.classList.add("hidden");
+
+        activityTab.classList.add("active");
+        statsTab.classList.remove("active");
+
+        loadSessions();
+
+    } else {
+
+        activityPage.classList.add("hidden");
+        statsPage.classList.remove("hidden");
+
+        activityTab.classList.remove("active");
+        statsTab.classList.add("active");
+
+        loadStatistics();
+    }
+}
+
+
+gameSelect.onchange = () => {
+
+    if (
+        statsPage.classList.contains("hidden")
+    ) {
+        loadSessions();
+    } else {
+        loadStatistics();
+    }
+};
+
+
+function escapeHtml(text) {
+
+    const div =
+        document.createElement("div");
+
+    div.textContent = text;
+
+    return div.innerHTML;
+}
+
+
+loadGames();
+loadSessions();
+
+</script>
+
+</body>
+
+</html>
