@@ -79,6 +79,17 @@ select {
     border-bottom: 1px solid #eee;
 }
 
+.activity-status {
+    padding: 8px 0;
+    color: #777;
+    font-style: italic;
+}
+
+.activity-status.error {
+    color: #c0392b;
+    font-style: normal;
+}
+
 .bar {
     height: 8px;
     background: #ddd;
@@ -159,21 +170,27 @@ let sessions = [];
 
 async function loadGames() {
 
-    const response =
-        await fetch(API + "/games");
+    try {
 
-    const data =
-        await response.json();
+        const response =
+            await fetch(API + "/games");
 
-    for (const game of data.games) {
+        const data =
+            await response.json();
 
-        const option =
-            document.createElement("option");
+        for (const game of data.games) {
 
-        option.value = game;
-        option.textContent = game;
+            const option =
+                document.createElement("option");
 
-        gameSelect.appendChild(option);
+            option.value = game;
+            option.textContent = game;
+
+            gameSelect.appendChild(option);
+        }
+
+    } catch (error) {
+        console.error("Gagal memuat daftar game:", error);
     }
 }
 
@@ -183,46 +200,75 @@ async function loadSessions() {
     const game =
         gameSelect.value;
 
-    const response =
-        await fetch(
-            API +
-            "/sessions?game=" +
-            encodeURIComponent(game)
-        );
+    activityPage.innerHTML = `
+        <div class="card">Loading sessions...</div>
+    `;
 
-    const data =
-        await response.json();
+    try {
 
-    sessions = data.sessions;
+        const response =
+            await fetch(
+                API +
+                "/sessions?game=" +
+                encodeURIComponent(game)
+            );
 
-    activityPage.innerHTML = "";
+        if (!response.ok) {
+            throw new Error(
+                "HTTP " + response.status + " saat memuat sessions"
+            );
+        }
 
-    for (const session of sessions) {
+        const data =
+            await response.json();
 
-        const card =
-            document.createElement("div");
+        sessions = data.sessions || [];
 
-        card.className = "card session";
+        activityPage.innerHTML = "";
 
-        card.innerHTML = `
-            <strong>${escapeHtml(session.game_name)}</strong>
-            <br>
-            Session:
-            ${escapeHtml(session.session_id)}
-            <br>
-            <small>${escapeHtml(session.created_at)}</small>
-            <div class="activities"
-                 id="activity-${escapeHtml(session.session_id)}">
+        if (sessions.length === 0) {
+            activityPage.innerHTML = `
+                <div class="card">Tidak ada session.</div>
+            `;
+            return;
+        }
+
+        for (const session of sessions) {
+
+            const card =
+                document.createElement("div");
+
+            card.className = "card session";
+
+            card.innerHTML = `
+                <strong>${escapeHtml(session.game_name)}</strong>
+                <br>
+                Session:
+                ${escapeHtml(session.session_id)}
+                <br>
+                <small>${escapeHtml(session.created_at)}</small>
+                <div class="activities">
+                </div>
+            `;
+
+            card.onclick = () =>
+                loadActivities(
+                    session.session_id,
+                    card
+                );
+
+            activityPage.appendChild(card);
+        }
+
+    } catch (error) {
+
+        activityPage.innerHTML = `
+            <div class="card">
+                Gagal mengambil sessions: ${escapeHtml(error.message)}
             </div>
         `;
 
-        card.onclick = () =>
-            loadActivities(
-                session.session_id,
-                card
-            );
-
-        activityPage.appendChild(card);
+        console.error("Gagal memuat sessions:", error);
     }
 }
 
@@ -235,32 +281,89 @@ async function loadActivities(
     const container =
         card.querySelector(".activities");
 
-    if (container.innerHTML !== "")
+    // Guard against re-fetching once activities have successfully loaded
+    if (container.dataset.loaded === "true") {
         return;
+    }
 
-    const response =
-        await fetch(
-            API +
-            "/activities?session=" +
-            encodeURIComponent(sessionId)
+    container.innerHTML = `
+        <div class="activity-status">Loading activities...</div>
+    `;
+
+    try {
+
+        const response =
+            await fetch(
+                API +
+                "/activities?session=" +
+                encodeURIComponent(sessionId)
+            );
+
+        if (!response.ok) {
+            throw new Error(
+                "HTTP " + response.status + " saat memuat activities"
+            );
+        }
+
+        const data =
+            await response.json();
+
+        // Be defensive: accept a couple of plausible response shapes
+        // in case the API nests the array differently than expected.
+        const activities =
+            data.activities ||
+            (data.data && data.data.activities) ||
+            (Array.isArray(data) ? data : null);
+
+        if (!activities || activities.length === 0) {
+            container.innerHTML = `
+                <div class="activity-status">
+                    Tidak ada aktivitas untuk session ini.
+                </div>
+            `;
+            console.warn(
+                "Respon /activities tidak berisi array 'activities' yang diharapkan:",
+                data
+            );
+            return;
+        }
+
+        container.innerHTML = "";
+
+        for (const item of activities) {
+
+            const div =
+                document.createElement("div");
+
+            div.className = "activity";
+
+            div.textContent =
+                item.activity_order +
+                ". " +
+                item.activity;
+
+            container.appendChild(div);
+        }
+
+        container.dataset.loaded = "true";
+
+    } catch (error) {
+
+        container.innerHTML = `
+            <div class="activity-status error">
+                Gagal mengambil activities: ${escapeHtml(error.message)}
+                <br>
+                <span style="text-decoration:underline;cursor:pointer"
+                      onclick="event.stopPropagation(); this.closest('.activities').dataset.loaded=''; this.closest('.card').click();">
+                    Coba lagi
+                </span>
+            </div>
+        `;
+
+        console.error(
+            "Gagal memuat activities untuk session " + sessionId + ":",
+            error
         );
-
-    const data =
-        await response.json();
-
-    for (const item of data.activities) {
-
-        const div =
-            document.createElement("div");
-
-        div.className = "activity";
-
-        div.textContent =
-            item.activity_order +
-            ". " +
-            item.activity;
-
-        container.appendChild(div);
     }
 }
 
