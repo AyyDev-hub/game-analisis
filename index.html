@@ -310,12 +310,12 @@ async function loadActivities(
 
         // Be defensive: accept a couple of plausible response shapes
         // in case the API nests the array differently than expected.
-        const activities =
-            data.activities ||
-            (data.data && data.data.activities) ||
+        const positions =
+            data.positions ||
+            (data.data && data.data.positions) ||
             (Array.isArray(data) ? data : null);
 
-        if (!activities || activities.length === 0) {
+        if (!positions || positions.length === 0) {
             container.innerHTML = `
                 <div class="activity-status">
                     Tidak ada aktivitas untuk session ini.
@@ -330,7 +330,7 @@ async function loadActivities(
 
         container.innerHTML = "";
 
-        for (const item of activities) {
+        for (const position of Object.keys(positions)) {
 
             const div =
                 document.createElement("div");
@@ -338,9 +338,9 @@ async function loadActivities(
             div.className = "activity";
 
             div.textContent =
-                item.activity_order +
+                position +
                 ". " +
-                item.activity;
+                position.activity;
 
             container.appendChild(div);
         }
